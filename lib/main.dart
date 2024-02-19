@@ -22,7 +22,7 @@ class MyApp extends StatelessWidget {
     );
   }
 }
-
+ 
 class AnimatedBackground extends StatefulWidget {
   const AnimatedBackground({Key? key});
 

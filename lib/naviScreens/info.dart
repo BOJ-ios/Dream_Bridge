@@ -3,7 +3,7 @@ import 'package:carousel_slider/carousel_slider.dart';
 
 class InformationScreen extends StatelessWidget {
   const InformationScreen({Key? key});
-
+ 
   @override
   Widget build(BuildContext context) {
     return Container(
