@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:google_nav_bar/google_nav_bar.dart';
 
 import 'home.dart';
 import 'info.dart';
@@ -20,7 +21,8 @@ class _NaviScreenState extends State<NaviScreen> {
   Future<bool> onWillPop() async {
     DateTime currentTime = DateTime.now();
     bool backButton = currentBackPressTime == null ||
-        currentTime.difference(currentBackPressTime!) > const Duration(seconds: 2);
+        currentTime.difference(currentBackPressTime!) >
+            const Duration(seconds: 2);
 
     if (backButton) {
       currentBackPressTime = currentTime;
@@ -56,28 +58,58 @@ class _NaviScreenState extends State<NaviScreen> {
           ],
         ),
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home),
-            label: 'Home',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.map),
-            label: 'Map',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.info),
-            label: 'Information',
-          ),
-        ],
-        onTap: (index) {
-          _pageController.jumpToPage(index); // Changed from animateToPage for immediate response
-          setState(() {
-            _currentIndex = index;
-          });
-        },
+      // BottomnavigationBar 수정
+      bottomNavigationBar: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 30.0, vertical: 15),
+        child: GNav(
+          backgroundColor: Colors.white,
+          color: const Color(0xFF757575),
+          activeColor: const Color(0xff9433AC),
+          tabBackgroundColor: const Color(0xffE9D4F0).withOpacity(0.8),
+          gap: 8,
+          iconSize: 24,
+          onTabChange: (index) {
+            print(index);
+            _pageController
+                .jumpToPage(index);
+            setState(() {
+              _currentIndex = index;
+            });
+          },
+          padding: EdgeInsets.all(15),
+          tabs: const [
+            // [디자인] Home button
+            GButton(
+              icon: Icons.home,
+              text: 'Home',
+              textStyle: TextStyle(
+                fontFamily: 'Roboto-Medium',
+                fontSize: 16.0,
+                color: const Color(0xFF9433AC),
+              ),
+            ),
+            // [디자인] Map button
+            GButton(
+              icon: Icons.map,
+              text: 'Map',
+              textStyle: TextStyle(
+                fontFamily: 'Roboto-Medium',
+                fontSize: 16.0,
+                color: const Color(0xFF9433AC),
+              ),
+            ),
+            // [디자인] Information button
+            GButton(
+              icon: Icons.favorite,
+              text: 'Wonder',
+              textStyle: TextStyle(
+                fontFamily: 'Roboto-Medium',
+                fontSize: 16.0,
+                color: const Color(0xFF9433AC),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
