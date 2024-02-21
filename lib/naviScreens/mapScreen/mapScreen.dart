@@ -44,6 +44,10 @@ class _MapScreenState extends State<MapScreen> {
   //시도군구 이름 저장
   Map<PolygonId, String> SIDOGUNGU_Name = {};
 
+  //인구데이터
+  Map<String, double> regionDetails = {};
+  Map<String, double> oneParentRate = {};
+
   late String mainID;
 
   @override
@@ -108,71 +112,93 @@ class _MapScreenState extends State<MapScreen> {
       ),
     );
   }
+
   Color getColor(double value) {
-  double hue = (120.0 - (value * 120.0)).clamp(0, 120).toDouble();
-  // HSV 색상으로 변환하여 Flutter의 Color 객체 생성
-  return HSVColor.fromAHSV(1.0, hue, 1.0, 0.8).toColor();
-}
-
-  Future<Map<String, Map<String, int>>> getRegionDetails(String state) async {
-  DatabaseReference ref = FirebaseDatabase.instance.ref('지역/$state');
-
-  // Realtime Database에서 시도에 해당하는 데이터 조회
-  DataSnapshot snapshot = await ref.get();
-  Map<String, Map<String, int>> regionDetails = {};
-
-  if (snapshot.exists) {
-    Map<dynamic, dynamic> counties = snapshot.value as Map<dynamic, dynamic>;
-    counties.forEach((countyName, countyData) {
-      // 각 시군구의 '전체가구'와 '저소득한부모가구' 값 추출 및 저장
-      var totalHouseholds = countyData['전체가구'] ?? 0;
-      var lowIncomeSingleParentHouseholds = countyData['저소득한부모가구'] ?? 0;
-
-      // 반환할 맵에 시군구 정보 추가
-      regionDetails[countyName as String] = {
-        '전체가구': totalHouseholds,
-        '저소득한부모가구': lowIncomeSingleParentHouseholds
-      };
-    });
-  } else {
-    print('No data available.');
+    double hue = (240.0 - value).clamp(0, 240).toDouble();
+    // print(hue);
+    // HSV 색상으로 변환하여 Flutter의 Color 객체 생성
+    return HSVColor.fromAHSV(0.3, hue, 1.0, 1).toColor();
   }
-  return regionDetails;
-}
-Future<Map<String, int>> getTotalHouseholds(String state) async {
-  DatabaseReference ref = FirebaseDatabase.instance.ref('지역/$state');
 
-  // Realtime Database에서 시도에 해당하는 데이터 조회
-  DataSnapshot snapshot = await ref.get();
-  int totalHouseholdsSum = 0;
-  int lowIncomeSingleParentHouseholdsSum = 0;
+  //!시군구 정보
+  Future<void> getRegionDetails(String state) async {
+    DatabaseReference ref = FirebaseDatabase.instance.ref('지역/$state');
 
-  if (snapshot.exists) {
-    Map<dynamic, dynamic> counties = snapshot.value as Map<dynamic, dynamic>;
-    counties.forEach((countyName, countyData) {
-      // 각 시군구의 '전체가구'와 '저소득한부모가구' 값 더하기
-      totalHouseholdsSum += countyData['전체가구'] ?? 0;
-      lowIncomeSingleParentHouseholdsSum += countyData['저소득한부모가구'] ?? 0;
-    });
-  } else {
-    print('No data available.');
+    // Realtime Database에서 시도에 해당하는 데이터 조회
+    DataSnapshot snapshot = await ref.get();
+    if (snapshot.exists) {
+      Map<dynamic, dynamic> counties = snapshot.value as Map<dynamic, dynamic>;
+      counties.forEach((countyName, countyData) {
+        // 각 시군구의 '전체가구'와 '저소득한부모가구' 값 추출 및 저장
+        var totalHouseholds = countyData['전체가구'] ?? 0;
+        var lowIncomeSingleParentHouseholds = countyData['저소득한부모가구'] ?? 0;
+        double rate = lowIncomeSingleParentHouseholds / totalHouseholds;
+        // 반환할 맵에 시군구 정보 추가
+        regionDetails[countyName as String] = rate;
+      });
+    } else {
+      print('No data available.');
+    }
   }
-  return {
-    '전체가구': totalHouseholdsSum,
-    '저소득한부모가구': lowIncomeSingleParentHouseholdsSum
-  };
-}
+
+  //!시도 정보
+  Future<Map<String, num>> getTotalHouseholds(String state) async {
+    DatabaseReference ref = FirebaseDatabase.instance.ref('지역/$state');
+
+    // Realtime Database에서 시도에 해당하는 데이터 조회
+    DataSnapshot snapshot = await ref.get();
+    var totalHouseholdsSum = 0;
+    var lowIncomeSingleParentHouseholdsSum = 0;
+
+    if (snapshot.exists) {
+      Map<dynamic, dynamic> counties = snapshot.value as Map<dynamic, dynamic>;
+
+      counties.forEach((countyName, countyData) {
+        // 각 시군구의 '전체가구'와 '저소득한부모가구' 값 더하기
+        // print(countyName.toString());
+        // print((countyData['전체가구'] as int).toString());
+        totalHouseholdsSum += countyData['전체가구'] as int;
+        lowIncomeSingleParentHouseholdsSum += countyData['저소득한부모가구'] as int;
+      });
+    } else {
+      print('No data available.');
+    }
+    return {'전체가구': totalHouseholdsSum, '저소득한부모가구': lowIncomeSingleParentHouseholdsSum};
+  }
 
   Future<void> loadSIDO() async {
     if (SIDO_Polygons.isEmpty) {
       DatabaseReference starCountRef = FirebaseDatabase.instance.ref("polygonData/kr/SIDO/features");
       DataSnapshot snapshot = await starCountRef.get(); //비동기
+
+      List<String> names = [];
       final data = snapshot.value;
       if (data != null && data is List<dynamic>) {
         List<GeoFeature> geoData = data.map<GeoFeature>((item) {
           final Map<String, dynamic> map = Map<String, dynamic>.from(item);
           return GeoFeature.fromJson(map);
         }).toList();
+
+        for (var feature in geoData) {
+          String id = feature.properties.sidoCd ?? "null";
+          String name = feature.properties.sidoNm ?? "null";
+
+          //! 시군구
+          await getRegionDetails(name);
+
+          //! 시도
+          var sidodata = await getTotalHouseholds(name);
+          double rate = sidodata["저소득한부모가구"]! / sidodata["전체가구"]!;
+
+          oneParentRate[name] = rate;
+        }
+        var sortedEntries = oneParentRate.entries.toList()..sort((a, b) => a.value.compareTo(b.value));
+        Map<String, int> nameRank = {};
+        for (var i = 0; i < sortedEntries.length; i++) {
+          nameRank[sortedEntries[i].key] = i.toInt();
+        }
+        print(oneParentRate);
+        print(nameRank);
 
         for (var feature in geoData) {
           var geometry = feature.geometry;
@@ -185,19 +211,17 @@ Future<Map<String, int>> getTotalHouseholds(String state) async {
           List<LatLng> allCoordinates = [];
           Polygon polygon;
 
-          var sidodate = getTotalHouseholds(name)
-          var rate = sidodate['저소득한부모가구']/sidodate['전체가구']
-          var regionColor = getColor(rate)
-
+          Color color = getColor((nameRank[name]! + 1) * 14);
+          // print('$name $rate $regionColor');
           if (type == 'Polygon') {
             allCoordinates = _convertToLatLngList(coordinates[0][0]);
-            polygon = createPolygon(PolygonId(id), allCoordinates, 1, () => onSIDOPolygonTapped(PolygonId(id)), regionColor;)
+            polygon = createPolygon(PolygonId(id), allCoordinates, 1, () => onSIDOPolygonTapped(PolygonId(id)), color);
             SIDO_Polygons.add(polygon);
           } else if (type == 'MultiPolygon') {
             for (var i = 0; i < coordinates.length; i++) {
               List<LatLng> tempCoordinates = _convertToLatLngList(coordinates[i][0]);
               allCoordinates.addAll(tempCoordinates);
-              polygon = createPolygon(PolygonId("$id-$i"), tempCoordinates, 0, () => onSIDOPolygonTapped(PolygonId(id)), regionColor);
+              polygon = createPolygon(PolygonId("$id-$i"), tempCoordinates, 0, () => onSIDOPolygonTapped(PolygonId(id)), color);
               SIDO_Polygons.add(polygon);
             }
           }
@@ -222,29 +246,35 @@ Future<Map<String, int>> getTotalHouseholds(String state) async {
           return GeoFeature.fromJson(map);
         }).toList();
 
+        var sortedEntries = regionDetails.entries.toList()..sort((a, b) => a.value.compareTo(b.value));
+        Map<String, int> nameRank = {};
+        for (var i = 0; i < sortedEntries.length; i++) {
+          nameRank[sortedEntries[i].key] = i.toInt();
+        }
+
+        print(nameRank.length);
+
         for (var feature in geoData) {
           var geometry = feature.geometry;
           var type = geometry.type;
           var coordinates = geometry.coordinates;
           String id = feature.properties.sigunguCd ?? "null";
-          String name = feature.properties.sigunguNm ?? "null";
+          String name = feature.properties.sigunguNm?.split(" ")[0] ?? "null";
           SIDOGUNGU_Name[PolygonId(id)] = name;
-          
-          sidoName = SIDOGUNGU_Name[PolygonId(id.substring(0, 2))]
-          sigunguData = getRegionDetails(sidoName)
-          rate = sigunguData[name]['한부모저소득가구']/sigunguData[name]['전체가구']
-          var regionColor = getColor(rate)
+
+          Color color = getColor((nameRank[name]! + 1) * 1.1);
+
           List<LatLng> allCoordinates = [];
           List<Polygon> polygons = [];
 
           if (type == 'Polygon') {
             allCoordinates = _convertToLatLngList(coordinates[0][0]);
-            polygons.add(createPolygon(PolygonId(id), allCoordinates, 1, () => onSIGUNGUPolygonTapped(PolygonId(id)), regionColor));
+            polygons.add(createPolygon(PolygonId(id), allCoordinates, 1, () => onSIGUNGUPolygonTapped(PolygonId(id)), color));
           } else if (type == 'MultiPolygon') {
             for (var i = 0; i < coordinates.length; i++) {
               List<LatLng> tempCoordinates = _convertToLatLngList(coordinates[i][0]);
               allCoordinates.addAll(tempCoordinates);
-              polygons.add(createPolygon(PolygonId("$id-$i"), tempCoordinates, 1, () => onSIGUNGUPolygonTapped(PolygonId(id)), regionColor));
+              polygons.add(createPolygon(PolygonId("$id-$i"), tempCoordinates, 1, () => onSIGUNGUPolygonTapped(PolygonId(id)), color));
             }
           }
           SIGUNGU_Individual[PolygonId(id)] = allCoordinates;
@@ -263,38 +293,14 @@ Future<Map<String, int>> getTotalHouseholds(String state) async {
 
   Future<void> onSIDOPolygonTapped(PolygonId polygonId) async {
     await loadSIGUNGU();
+    print("시군구 로딩완료");
     String id = polygonId.toString();
     mainID = SIDOGUNGU_Name[polygonId] ?? "없음";
 
     if (id.contains('-')) {
       polygonId = PolygonId(id.split('-')[0]);
     }
-    var sidodate = getRegionDetails(mainID)
-    var rate = sidodate['저소득한부모가구']/sidodate['전체가구']
-     var regionColor = getColor(rate)
-    if (polygons.any((polygon) => polygon.polygonId == polygonId)) {
-    
-    
-   
-    Color newColor = Colors.blue; // 새로운 색상으로 변경
 
-    // 기존 폴리곤 찾기
-    final Polygon oldPolygon = polygons.firstWhere((polygon) => polygon.polygonId == polygonId);
-    // 새 폴리곤 생성
-    final Polygon newPolygon = Polygon(
-      polygonId: oldPolygon.polygonId,
-      points: oldPolygon.points,
-      fillColor: newColor, // 새로운 색상 적용
-      strokeColor: oldPolygon.strokeColor,
-      strokeWidth: oldPolygon.strokeWidth,
-    );
-
-    // 기존 폴리곤 제거 및 새 폴리곤 추가
-    setState(() {
-      polygons.remove(oldPolygon);
-      polygons.add(newPolygon);
-    });
-  }
     // Calculate bounds
     if (polyBounds[polygonId] == null) {
       polyBounds[polygonId] = calculatePolygonBounds(SIDO_Individual[polygonId]!);
@@ -302,7 +308,16 @@ Future<Map<String, int>> getTotalHouseholds(String state) async {
     clearMap();
     List<Polygon>? data = SIGUNGU_Polygons[polygonId];
     setState(() {
-      polygons = SIDO_Polygons.toSet();
+      List<Polygon> temp1 = List.from(SIDO_Polygons);
+      List<Polygon> temp2 = [];
+      for (Polygon po in temp1) {
+        String tempID = po.polygonId.toString();
+        String mainID = tempID.substring(tempID.indexOf('(') + 1, tempID.indexOf(')')).split("-")[0];
+        if (mainID != id.substring(id.indexOf('(') + 1, id.indexOf(')')).split("-")[0]) {
+          temp2.add(po);
+        }
+      }
+      polygons = temp2.toSet();
       if (data != null) {
         polygons.addAll(data.toSet());
       }
@@ -334,23 +349,43 @@ Future<Map<String, int>> getTotalHouseholds(String state) async {
             return Container(
               height: 300,
               margin: const EdgeInsets.only(left: 25, right: 25, bottom: 40),
+              padding: const EdgeInsets.only(top: 25, left: 25, right: 25, bottom: 25),
               decoration: const BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.all(Radius.circular(20)),
               ),
-              child: const Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    Text(
-                      "자선단체 데이터가 없습니다.",
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                      ),
+              child: Column(
+                children: [
+                  Expanded(
+                    child: PageView.builder(
+                      itemCount: 1,
+                      itemBuilder: (context, index) {
+                        return SingleChildScrollView(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Text(
+                                "$mainID $name",
+                                style: const TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const Text(
+                                "자선단체 데이터가 없습니다.",
+                                style: TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             );
           },

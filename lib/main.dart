@@ -91,10 +91,10 @@ class _AnimatedBackgroundState extends State<AnimatedBackground>
       ),
       child: Stack(
         children: <Widget>[
-          CustomPaint(
-            painter: ShapePainter(shapes),
-            child: Container(),
-          ),
+          // CustomPaint(
+          //   painter: ShapePainter(shapes),
+          //   child: Container(),
+          // ),
           Align(
             alignment: Alignment.topLeft,
             child: Padding(
