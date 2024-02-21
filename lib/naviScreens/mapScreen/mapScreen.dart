@@ -108,6 +108,60 @@ class _MapScreenState extends State<MapScreen> {
       ),
     );
   }
+  Color getColor(double value) {
+  double hue = (120.0 - (value * 120.0)).clamp(0, 120).toDouble();
+  // HSV 색상으로 변환하여 Flutter의 Color 객체 생성
+  return HSVColor.fromAHSV(1.0, hue, 1.0, 0.8).toColor();
+}
+
+  Future<Map<String, Map<String, int>>> getRegionDetails(String state) async {
+  DatabaseReference ref = FirebaseDatabase.instance.ref('지역/$state');
+
+  // Realtime Database에서 시도에 해당하는 데이터 조회
+  DataSnapshot snapshot = await ref.get();
+  Map<String, Map<String, int>> regionDetails = {};
+
+  if (snapshot.exists) {
+    Map<dynamic, dynamic> counties = snapshot.value as Map<dynamic, dynamic>;
+    counties.forEach((countyName, countyData) {
+      // 각 시군구의 '전체가구'와 '저소득한부모가구' 값 추출 및 저장
+      var totalHouseholds = countyData['전체가구'] ?? 0;
+      var lowIncomeSingleParentHouseholds = countyData['저소득한부모가구'] ?? 0;
+
+      // 반환할 맵에 시군구 정보 추가
+      regionDetails[countyName as String] = {
+        '전체가구': totalHouseholds,
+        '저소득한부모가구': lowIncomeSingleParentHouseholds
+      };
+    });
+  } else {
+    print('No data available.');
+  }
+  return regionDetails;
+}
+Future<Map<String, int>> getTotalHouseholds(String state) async {
+  DatabaseReference ref = FirebaseDatabase.instance.ref('지역/$state');
+
+  // Realtime Database에서 시도에 해당하는 데이터 조회
+  DataSnapshot snapshot = await ref.get();
+  int totalHouseholdsSum = 0;
+  int lowIncomeSingleParentHouseholdsSum = 0;
+
+  if (snapshot.exists) {
+    Map<dynamic, dynamic> counties = snapshot.value as Map<dynamic, dynamic>;
+    counties.forEach((countyName, countyData) {
+      // 각 시군구의 '전체가구'와 '저소득한부모가구' 값 더하기
+      totalHouseholdsSum += countyData['전체가구'] ?? 0;
+      lowIncomeSingleParentHouseholdsSum += countyData['저소득한부모가구'] ?? 0;
+    });
+  } else {
+    print('No data available.');
+  }
+  return {
+    '전체가구': totalHouseholdsSum,
+    '저소득한부모가구': lowIncomeSingleParentHouseholdsSum
+  };
+}
 
   Future<void> loadSIDO() async {
     if (SIDO_Polygons.isEmpty) {
@@ -130,15 +184,20 @@ class _MapScreenState extends State<MapScreen> {
 
           List<LatLng> allCoordinates = [];
           Polygon polygon;
+
+          var sidodate = getTotalHouseholds(name)
+          var rate = sidodate['저소득한부모가구']/sidodate['전체가구']
+          var regionColor = getColor(rate)
+
           if (type == 'Polygon') {
             allCoordinates = _convertToLatLngList(coordinates[0][0]);
-            polygon = createPolygon(PolygonId(id), allCoordinates, 1, () => onSIDOPolygonTapped(PolygonId(id)), Colors.black38);
+            polygon = createPolygon(PolygonId(id), allCoordinates, 1, () => onSIDOPolygonTapped(PolygonId(id)), regionColor;)
             SIDO_Polygons.add(polygon);
           } else if (type == 'MultiPolygon') {
             for (var i = 0; i < coordinates.length; i++) {
               List<LatLng> tempCoordinates = _convertToLatLngList(coordinates[i][0]);
               allCoordinates.addAll(tempCoordinates);
-              polygon = createPolygon(PolygonId("$id-$i"), tempCoordinates, 0, () => onSIDOPolygonTapped(PolygonId(id)), Colors.black38);
+              polygon = createPolygon(PolygonId("$id-$i"), tempCoordinates, 0, () => onSIDOPolygonTapped(PolygonId(id)), regionColor);
               SIDO_Polygons.add(polygon);
             }
           }
@@ -170,17 +229,22 @@ class _MapScreenState extends State<MapScreen> {
           String id = feature.properties.sigunguCd ?? "null";
           String name = feature.properties.sigunguNm ?? "null";
           SIDOGUNGU_Name[PolygonId(id)] = name;
-
+          
+          sidoName = SIDOGUNGU_Name[PolygonId(id.substring(0, 2))]
+          sigunguData = getRegionDetails(sidoName)
+          rate = sigunguData[name]['한부모저소득가구']/sigunguData[name]['전체가구']
+          var regionColor = getColor(rate)
           List<LatLng> allCoordinates = [];
           List<Polygon> polygons = [];
+
           if (type == 'Polygon') {
             allCoordinates = _convertToLatLngList(coordinates[0][0]);
-            polygons.add(createPolygon(PolygonId(id), allCoordinates, 1, () => onSIGUNGUPolygonTapped(PolygonId(id)), Colors.black26));
+            polygons.add(createPolygon(PolygonId(id), allCoordinates, 1, () => onSIGUNGUPolygonTapped(PolygonId(id)), regionColor));
           } else if (type == 'MultiPolygon') {
             for (var i = 0; i < coordinates.length; i++) {
               List<LatLng> tempCoordinates = _convertToLatLngList(coordinates[i][0]);
               allCoordinates.addAll(tempCoordinates);
-              polygons.add(createPolygon(PolygonId("$id-$i"), tempCoordinates, 1, () => onSIGUNGUPolygonTapped(PolygonId(id)), Colors.black26));
+              polygons.add(createPolygon(PolygonId("$id-$i"), tempCoordinates, 1, () => onSIGUNGUPolygonTapped(PolygonId(id)), regionColor));
             }
           }
           SIGUNGU_Individual[PolygonId(id)] = allCoordinates;
@@ -205,6 +269,32 @@ class _MapScreenState extends State<MapScreen> {
     if (id.contains('-')) {
       polygonId = PolygonId(id.split('-')[0]);
     }
+    var sidodate = getRegionDetails(mainID)
+    var rate = sidodate['저소득한부모가구']/sidodate['전체가구']
+     var regionColor = getColor(rate)
+    if (polygons.any((polygon) => polygon.polygonId == polygonId)) {
+    
+    
+   
+    Color newColor = Colors.blue; // 새로운 색상으로 변경
+
+    // 기존 폴리곤 찾기
+    final Polygon oldPolygon = polygons.firstWhere((polygon) => polygon.polygonId == polygonId);
+    // 새 폴리곤 생성
+    final Polygon newPolygon = Polygon(
+      polygonId: oldPolygon.polygonId,
+      points: oldPolygon.points,
+      fillColor: newColor, // 새로운 색상 적용
+      strokeColor: oldPolygon.strokeColor,
+      strokeWidth: oldPolygon.strokeWidth,
+    );
+
+    // 기존 폴리곤 제거 및 새 폴리곤 추가
+    setState(() {
+      polygons.remove(oldPolygon);
+      polygons.add(newPolygon);
+    });
+  }
     // Calculate bounds
     if (polyBounds[polygonId] == null) {
       polyBounds[polygonId] = calculatePolygonBounds(SIDO_Individual[polygonId]!);
